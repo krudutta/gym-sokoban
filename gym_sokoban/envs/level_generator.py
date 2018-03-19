@@ -1,16 +1,4 @@
-'''Topology generation: Given an initial width*height room entirely
-constituted by wall blocks, the topology generation consists in creating the ‘empty’ spaces (i.e.
-corridors) where boxes, targets and the player can be placed. For this simple random walk algorithm
-with a configurable number of steps is applied: a random initial position and direction are chosen.
-Afterwards, for every step, the position is updated and, with a probability p = 0.35, a new random
-direction is selected. Every ‘visited’ position is emptied together with a number of surrounding wall
-blocks, selected by randomly choosing one of the following patterns indicating the adjacent room
-blocks to be removed (the darker square represents the reference position, that is, the position being
-visited). Note that the room ‘exterior’ walls are never emptied, so from a width×height room only
-a (width-2)×(height-2) space can actually be converted into corridors. The random walk approach
-guarantees that all the positions in the room are, in principle, reachable by the player. A relatively
-small probability of changing the walk direction favours the generation of longer corridors, while
-the application of a random pattern favours slightly more convoluted spaces. 
+'''
 Defaul parameters:
 • A maximum of 10 room topologies and for each of those 10 boxes/player positioning are
 retried in case a given combination doesn’t produce rooms with a score > 0.
@@ -201,19 +189,10 @@ class Room:
 			
 				
 				
-				
+'''test code'''				
 print(int(1.5*16))			
 r=Room(8,8,2)
 r.topology_gen()
 r.print_room()
 r.position_configuration()
 r.print_room()
-
-	
-
-
-		
-		
-	
-
-
