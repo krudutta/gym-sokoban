@@ -1,6 +1,7 @@
 import numpy as np
 import random
 import tkinter
+import copy
 import gym
 from gym import error, spaces, utils
 
@@ -121,7 +122,7 @@ class SokobanEnv(gym.Env):
     
     def _take_action(self, action):
         # change the matrix representation according to the action specified
-        self.past_world = self.world
+        self.past_world = copy.deepcopy(self.world)
         new_x, new_y = self.player_pos
         # MOVE LEFT
         if action == 1: 
@@ -162,42 +163,58 @@ class SokobanEnv(gym.Env):
     
     def _check_state(self):
         # return integer associated with reward/punishment states after comparing current and previous states
-        unique_p, counts_p = numpy.unique(self.past_world, return_counts=True)
-        unique_c, counts_c = numpy.unique(self.world, return_counts=True)
+        unique_p, counts_p = np.unique(self.past_world, return_counts=True)
+        unique_c, counts_c = np.unique(self.world, return_counts=True)
         info_p = dict(zip(unique_p, counts_p))
         info_c = dict(zip(unique_c, counts_c))
-        
-        past_targets = info_p['T']
-        try:    
-            curr_targets = info_c['T']
-            if 'X' in info_c.keys():
-                curr_targets = curr_targets + info_c['X']
-            if 'X' in info_p.keys():
-                past_targets = past_targets + info_p['X']
-            if past_targets > curr_targets:
-                return 2
-            if past_targets < curr_targets:
-                return 3
-            elif past_targets == curr_targets:
-                return 4
-        except KeyError:
-            self.is_finish = True
-            return 1
+        p_T=0
+        c_T=0
+        p_X=0
+        c_X=0
+        p_C=0
+        c_C=0
+        if 'X' in info_c.keys():
+            c_X = info_c['X']
+        if 'X' in info_p.keys():
+            p_X = info_p['X']
             
+        if 'T' in info_c.keys():
+            c_T = info_c['T']
+        if 'T' in info_p.keys():
+            p_T = info_p['T']
+            
+        if 'C' in info_c.keys():
+            c_C = info_c['C']
+        if 'C' in info_p.keys():
+            p_C = info_p['C']
+        
+        if c_X == 0 and c_T == 0 and (c_C == (p_X + p_C + p_T)):
+            return 1
+        
+        if p_C > c_C:
+            return 3
+        
+        if p_C < c_C:
+            return 2
+        
+        if (p_X + p_T) == (c_X + c_T):
+            return 4
+        
         return -1
     
     def _get_state(self):
         # return the current state observation
-        return 
+        return self.world
     
     def _get_reward(self):
-        if _check_state() == 1: #all the boxes are placed
+        state = self._check_state()
+        if state == 1: #all the boxes are placed
             return 10
-        elif _check_state() == 2: #a box was placed on a target
+        elif state == 2: #a box was placed on a target
             return 1
-        elif _check_state() == 3: #a box was removed from the target
+        elif state == 3: #a box was removed from the target
             return -1
-        elif _check_state() == -1: #undefined state
+        elif state == -1: #undefined state
             return 0
-        else: #player changes its position without any consequence
+        elif state == 4: #player changes its position without any consequence
             return -0.1
