@@ -1,104 +1,30 @@
-'''
-Defaul parameters:
-• A maximum of 10 room topologies and for each of those 10 boxes/player positioning are
-retried in case a given combination doesn’t produce rooms with a score > 0.
-• The room configuration tree is by default limited to a maximum depth of 300 applied actions.
-• The total number of visited positions is by default limited to 1000000.
-• Default random-walk steps: 1.5× (room width + room height).
-'''
-
-'''
-1-l
-2-r
-3-u
-4-d
-
-'''
-
 import numpy as np
 import random as rn
+from collections import deque
+from math import log
 
 class Error(Exception):
-    """Base class for exceptions in this module."""
+    '''Base class for exceptions in this module.'''
     pass
 
 class BoxAndEmptySpaceError(Error):
 	def __init__(self, message):
 		self.message = message
-
-
-class Box:
-	def __init__(self, x, y):
-		self.x=x
-		self.y=y
-		self.is_solved=False
-		
-	def placed(self):
-		self.is_solved=True
 	
-class Player:
-	init_x=-1
-	init_y=-1
-	def __init__(self, x=None, y=None, direction=None):
-		self.x=x
-		self.y=y
-		self.d=direction
-		
-	'''place a player anywhere in the room'''	
-	def place_player(self, x_new, y_new, d_new):
-		self.x=x_new
-		self.y=y_new
-		self.d=d_new
-			
-	'''move the player 1 position in the direction given'''		
-	def move_player(self, d, width, height):
-		if(d==1):
-			self.x=self.x-1
-		elif(d==2):
-			self.x=self.x+1
-		elif(d==3):
-			self.y=self.y-1
-		elif(d==4):
-			self.y=self.y+1
-		'''for handling walls'''	
-		if(self.x==0): 
-			self.x=1
-			self.move_player(2,width, height)
-		elif(self.x==width-1): 
-			self.x=width-2
-			self.move_player(1,width, height) 
-		elif(self.y==0): 
-			self.y=1
-			self.move_player(4,width, height)
-		elif(self.y==height-1): 
-			self.y=width-2
-			self.move_player(3,width, height)
-		
-
 class Room:
-	boxes=[]
-	player=Player()  '''why do i need this? Player only comes in the picture 
-	when we want to do reverse playing or real playing. This object is most 
-	probably only useful to reuse the moving code. For reverse playing, 
-	if there's a different function then it'll have it's own object for 
-	room and player and box. currently the only reason these objects exist 
-	in this class is to create a room with certain topology.'''
-	empty_spaces=0
-	empty_space_list=[]
-	target_tile_list=[]
+	
 	
 	def __init__(self, height, width, box_num):
+		self.boxes=[]
+		self.target_tile_list=[]
+		self.player_curpos=[]
 		self.width=width
 		self.height=height
 		self.box_num=box_num
 		self.room = np.full((height,width), 'W')
-				
-	def get_tile(self, x, y):
-		return self.room[x][y]
-	
-	def set_tile(self, x, y, c):
-		self.room[x][y]=c
-
+		
+	def print_room(self):
+		print(self.room)
 
 	def choose_random_dir(self, d):
 		'''select a new direction and then check yes(35%) and no(65%). 
@@ -110,89 +36,418 @@ class Room:
 			return d1
 		else:
 			return d
+			
+	def get_tile(self, x, y):
+		return self.room[y][x]
+	
+	def set_tile(self, x, y, c):
+		self.room[y][x]=c
 	
 	def update_space(self, x, y, sym):	
-		if(x==0 or x==self.width-1 or y==0 or y==self.height-1):
-			pass
+		if(x<=0 or x>=self.width-1 or y<=0 or y>=self.height-1):
+			return False
 		else:
 			self.set_tile(x,y,sym)
-	
-	def print_room(self):
-		print(self.room)
-	
-	def find_empty_spaces(self):
-		for i in range(self.height):
-			for j in range(self.width):
-				if(self.get_tile(i,j) == 'E'):
-					self.empty_spaces+=1
-					self.empty_space_list.append((i,j))
-	
-	def get_random_empty_space(self,n):
-		return rn.sample(self.empty_space_list,n)
-	
-	def player_initpos(self,x,y):
-		self.player.init_x=x
-		self.player.init_y=y
-		self.player.place_player(x,y,np.random.randint(1,4))
+			return True
 		
-	def topology_gen(self):
-		p=self.player
-		p.x=np.random.randint(1,self.width-2) 
-		p.y=np.random.randint(1,self.height-2)
-		p.d=np.random.randint(1,4)
-		self.set_tile(p.x, p.y, 'E')
-		
-		
-		for i in range(int(1.5*(self.width+self.height))):
+	def topology_gen(self, walk_steps):
+		dirn=[1,2,3,4]
+		x=np.random.randint(1,self.width-2) 
+		y=np.random.randint(1,self.height-2)
+		d=np.random.randint(1,4)
+		self.update_space(x,y,'E')
+		for i in range(walk_steps):
 			t=np.random.randint(1,5)
 			if(t==1):
-				self.update_space(p.x-1, p.y, 'E')
-				self.update_space(p.x+1, p.y, 'E')
+				self.update_space(x-1, y, 'E')
+				self.update_space(x+1, y, 'E')
 			elif(t==2):
-				self.update_space(p.x, p.y+1, 'E')
-				self.update_space(p.x, p.y-1, 'E')
+				self.update_space(x, y+1, 'E')
+				self.update_space(x, y-1, 'E')
 			elif(t==3):
-				self.update_space(p.x-1, p.y, 'E')
-				self.update_space(p.x, p.y-1, 'E')
+				self.update_space(x-1, y, 'E')
+				self.update_space(x, y-1, 'E')
 			elif(t==4):
-				self.update_space(p.x, p.y-1, 'E')
-				self.update_space(p.x-1, p.y-1, 'E')
-				self.update_space(p.x-1, p.y, 'E')
+				self.update_space(x, y-1, 'E')
+				self.update_space(x-1, y-1, 'E')
+				self.update_space(x-1, y, 'E')
 			elif(t==5):
-				self.update_space(p.x+1, p.y, 'E')
-				self.update_space(p.x, p.y-1, 'E')
-			
-			p.d=self.choose_random_dir(p.d)
-			p.move_player(p.d, self.width, self.height)
-			self.set_tile(p.x, p.y, 'E')
-		
-		self.find_empty_spaces()
-	
-		
-		
+				self.update_space(x+1, y, 'E')
+				self.update_space(x, y-1, 'E')
+			d=self.choose_random_dir(d)
+			if(d==1):
+				x=x-1
+			elif(d==2):
+				x=x+1
+			elif(d==3):
+				y=y-1
+			elif(d==4):
+				y=y+1
+			if(self.update_space(x,y,'E')):
+				continue
+			else:
+				if(d==1):
+					x=x+1
+				elif(d==2):
+					x=x-1
+				elif(d==3):
+					y=y+1
+				elif(d==4):
+					y=y-1	
+				i-=1
+
 	def position_configuration(self):
-		if(self.empty_spaces <= self.box_num):
-			raise BoxAndEmptySpaceError("Number of boxes should be more than number of empty spaces")
-			
-		b_list=self.get_random_empty_space(self.box_num)
+		#boxes config	
 		for i in range(self.box_num):
-			self.boxes.append(Box(b_list[i][0],b_list[i][1]))
-			self.update_space(b_list[i][0],b_list[i][1],'B')
-		
-		self.player_initpos(np.random.randint(1,self.width-2), np.random.randint(1,self.height-2))
+			while(True):
+				x=np.random.randint(1,self.width-2) 
+				y=np.random.randint(1,self.height-2)
+				if(self.get_tile(x,y)=='E'):
+					self.target_tile_list.append((x,y))
+					self.set_tile(x,y,'X') #setting this as X cuz initially B is on T. S
+					self.boxes.append([x,y])
+					break
+				else:
+					continue
+		#player config
+		while(True):
+			x=np.random.randint(1,self.width-2) 
+			y=np.random.randint(1,self.height-2)
+			if(self.get_tile(x,y)=='E'):
+				self.set_tile(x,y,'P')
+				self.set_player_curpos(x,y)
+				break
+			else:
+				continue
 	
-	'''i think that reverse playing is a completly different function
-	as it needs to create 10 diiferent topologies for a given room and 
-	select best from them as the output after doing reverse playing on 
-	each configuration and calculation scores for eac of them '''
-			
-			
+	def is_target_tile(self, x, y):
+		for i in range(self.box_num):
+			if self.target_tile_list[i][0]==x and self.target_tile_list[i][1]==y:
+				return True
+		return False
+	
+	def which_box(self, x, y):
+		for i in range(self.box_num):
+			if self.boxes[i][0]==x and self.boxes[i][1]==y:
+				return i
+		raise Exception("NO BOX FOUND")
 				
-				
-'''test code'''				
-print(int(1.5*16))			
-r=Room(8,8,2)
-r.topology_gen()
-r.print_room()
-r.position_configuration()
-r.print_room()
+	def set_player_curpos(self,x,y):
+		self.player_curpos=[]
+		self.player_curpos.append(x)
+		self.player_curpos.append(y)
+	
+	def update_box_pos(self, i, x, y):
+		self.boxes[i][0]=x
+		self.boxes[i][1]=y
+	
+	def make_move(self,x,y, m):
+		if(m==1):
+			if(self.get_tile(x-1,y)=='E'):
+				self.set_tile(x,y,'E')
+				self.set_tile(x-1,y,'P')
+				self.set_player_curpos(x-1,y)
+				return True
+		elif(m==2):
+			if(self.get_tile(x+1,y)=='E'):
+				self.set_tile(x,y,'E')
+				self.set_tile(x+1,y,'P')
+				self.set_player_curpos(x+1,y)
+				return True
+		elif(m==3):
+			if(self.get_tile(x,y+1)=='E'):
+				self.set_tile(x,y,'E')
+				self.set_tile(x,y+1,'P')
+				self.set_player_curpos(x,y+1)
+				return True
+		elif(m==4):
+			if(self.get_tile(x,y-1)=='E'):
+				self.set_tile(x,y,'E')
+				self.set_tile(x,y-1,'P')
+				self.set_player_curpos(x,y-1)
+				return True
+		elif(m==5):
+			if((self.get_tile(x+1,y)=='B' or self.get_tile(x+1,y)=='X') and self.get_tile(x-1,y)=='E'):
+				bi=self.which_box(x+1,y)
+				if(self.get_tile(x+1,y)=='X'):
+					self.set_tile(x+1,y,'T')
+				else:
+					self.set_tile(x+1,y,'E')
+				if self.is_target_tile(x,y):
+					self.set_tile(x,y,'X')
+				else:
+					self.set_tile(x,y,'B')
+				self.update_box_pos(bi, x,y)
+				self.set_tile(x-1,y,'P')
+				self.set_player_curpos(x-1,y)
+				return True	
+			else:
+				return False	
+		elif(m==6):
+			if((self.get_tile(x-1,y)=='B' or self.get_tile(x-1,y)=='X') and self.get_tile(x+1,y)=='E'):
+				bi=self.which_box(x-1,y)
+				if(self.get_tile(x-1,y)=='X'):
+					self.set_tile(x-1,y,'T')
+				else:
+					self.set_tile(x-1,y,'E')
+				if self.is_target_tile(x,y):
+					self.set_tile(x,y,'X')
+				else:
+					self.set_tile(x,y,'B')
+				self.update_box_pos(bi, x,y)
+				self.set_tile(x+1,y,'P')
+				self.set_player_curpos(x+1,y)
+				return True
+			else:
+				return False
+		elif(m==7):#down
+			if((self.get_tile(x,y-1)=='B' or self.get_tile(x,y-1)=='X') and self.get_tile(x,y+1)=='E'):
+				bi=self.which_box(x,y-1)
+				if(self.get_tile(x,y-1)=='X'):
+					self.set_tile(x,y-1,'T')
+				else:
+					self.set_tile(x,y-1,'E')
+				if self.is_target_tile(x,y):
+					self.set_tile(x,y,'X')
+				else:
+					self.set_tile(x,y,'B')
+				self.update_box_pos(bi, x,y)
+				self.set_tile(x,y+1,'P')
+				self.set_player_curpos(x,y+1)
+				return True
+		elif(m==8):
+			if((self.get_tile(x,y+1)=='B' or self.get_tile(x,y+1)=='X') and self.get_tile(x,y-1)=='E'):
+				bi=self.which_box(x,y+1)
+				if(self.get_tile(x,y+1)=='X'):
+					self.set_tile(x,y+1,'T')
+				else:
+					self.set_tile(x,y+1,'E')
+				if self.is_target_tile(x,y):
+					self.set_tile(x,y,'X')
+				else:
+					self.set_tile(x,y,'B')
+				self.update_box_pos(bi, x,y)
+				self.set_tile(x,y-1,'P')
+				self.set_player_curpos(x,y-1)
+				return True
+		elif(m==-5):
+			bi=self.which_box(x+1,y)
+			if self.is_target_tile(x,y):
+				self.set_tile(x,y,'T')
+			else:
+				self.set_tile(x,y,'E')
+			self.set_tile(x+1,y,'P')
+			if self.is_target_tile(x+2,y):
+				self.set_tile(x+2,y,'X')
+			else:
+				self.set_tile(x+2,y,'B')
+			self.set_player_curpos(x+1,y)
+			self.update_box_pos(bi,x+2,y)
+			
+		elif(m==-6):
+			bi=self.which_box(x-1,y)
+			if self.is_target_tile(x,y):
+				self.set_tile(x,y,'T')
+			else:
+				self.set_tile(x,y,'E')
+			self.set_tile(x-1,y,'P')
+			if self.is_target_tile(x-2,y):
+				self.set_tile(x-2,y,'X')
+			else:
+				self.set_tile(x-2,y,'B')
+			self.set_player_curpos(x-1,y)
+			self.update_box_pos(bi,x-2,y)
+			
+		elif(m==-7):
+			bi=self.which_box(x,y-1)
+			if self.is_target_tile(x,y):
+				self.set_tile(x,y,'T')
+			else:
+				self.set_tile(x,y,'E')
+			self.set_tile(x,y-1,'P')
+			if self.is_target_tile(x,y-2):
+				self.set_tile(x,y-2,'X')
+			else:
+				self.set_tile(x,y-2,'B')
+			self.set_player_curpos(x,y-1)
+			self.update_box_pos(bi,x,y-2)
+			
+		elif(m==-8):
+			bi=self.which_box(x,y+1)
+			if self.is_target_tile(x,y):
+				self.set_tile(x,y,'T')
+			else:
+				self.set_tile(x,y,'E')
+			self.set_tile(x,y+1,'P')
+			if self.is_target_tile(x,y+2):
+				self.set_tile(x,y+2,'X')
+			else:
+				self.set_tile(x,y+2,'B')
+			self.set_player_curpos(x,y+1)
+			self.update_box_pos(bi,x,y+2)	
+			
+	def reset_position_configuration(self):
+		for i in range(self.box_num):
+			self.set_tile(self.boxes[i][0],self.boxes[i][1], 'E')
+		for i in range(self.box_num):	
+			self.set_tile(self.target_tile_list[i][0], self.target_tile_list[i][1], 'T')
+		self.set_tile(self.player_curpos[0],self.player_curpos[1], 'E')
+		 	
+	def set_position_configuration(self, c):
+		j=0
+		for i in range(self.box_num):
+			self.boxes[i][0]=c[j]
+			j+=1
+			self.boxes[i][1]=c[j]
+			if self.is_target_tile(c[j-1], c[j]):
+				self.set_tile(self.boxes[i][0],self.boxes[i][1], 'X')
+			else:
+				self.set_tile(self.boxes[i][0],self.boxes[i][1], 'B')
+			j+=1
+
+		self.player_curpos[0]=c[j]
+		j+=1
+		self.player_curpos[1]=c[j]
+		self.set_tile(c[j-1],c[j],'P')
+	
+	def create_config_obj(self):
+		pos_conf=[]
+		for i in range(self.box_num):
+			pos_conf.append(self.boxes[i][0])
+			pos_conf.append(self.boxes[i][1])
+		pos_conf.append(self.player_curpos[0])
+		pos_conf.append(self.player_curpos[1])
+		return tuple(pos_conf) 				
+
+class Tree:
+	def __init__(self):
+		self.child=[]
+		self.data=()
+	
+	def create_child(self):
+		self.child.append(Tree())
+
+def create_config_tree(room):  #it takes a single position config and creates a move tree for it. 
+	moves=[1,2,3,4,5,6,7,8]
+	depth=0
+	explored=set()
+	conf_tree=Tree()
+	conf_tree.data=room.create_config_obj()
+	explored.add(room.create_config_obj())
+	rn.shuffle(moves)
+	child_q=deque()
+	nodes_num=0
+	i=0
+	for m in moves:
+		nodes_num+=1
+		mm=False
+		mm=room.make_move(room.player_curpos[0],room.player_curpos[1],m) #mm: move made bool
+		c=room.create_config_obj()
+		if c not in explored:  
+			explored.add(c)
+			conf_tree.create_child()
+			conf_tree.child[i].data=c
+			child_q.append(conf_tree.child[i])
+			i+=1
+		#reverse the move made	
+		if m<5 and m%2==0 and mm:
+			m-=1
+			room.make_move(room.player_curpos[0],room.player_curpos[1],m)
+		elif m<5 and mm:
+			m+=1
+			room.make_move(room.player_curpos[0],room.player_curpos[1],m)
+		elif mm:
+			m=m*-1
+			room.make_move(room.player_curpos[0],room.player_curpos[1],m)	
+
+	while((len(child_q)!=0) and (depth<=300)):
+		rn.shuffle(moves)
+		ch=child_q.popleft()
+		room.reset_position_configuration()
+		room.set_position_configuration(ch.data)
+		i=0
+		t=0
+		depth=log(nodes_num,8)
+		for m in moves:
+			nodes_num+=1
+			mm=False
+			mm=room.make_move(room.player_curpos[0],room.player_curpos[1],m) #mm: move made bool
+			c=room.create_config_obj()
+			if c not in explored:  
+				explored.add(c)
+				ch.create_child()
+				ch.child[i].data=c
+				child_q.append(ch.child[i])
+				i+=1
+			if m<5 and m%2==0 and mm:
+				m-=1
+				room.make_move(room.player_curpos[0],room.player_curpos[1],m)
+			elif m<5 and mm:
+				m+=1
+				room.make_move(room.player_curpos[0],room.player_curpos[1],m)
+			elif mm:
+				m=m*-1
+				room.make_move(room.player_curpos[0],room.player_curpos[1],m)
+		
+	return conf_tree	
+
+#-------------score calculator-----------------------------------------
+
+root_data=()
+
+def calc_score( tup1, tup2, swaps, cur_box, num_b ):
+	for j in range(num_b):
+		t=j
+		if(j!=cur_box and (tup1[j+t] != tup2[j+t] or 
+		   tup1[j+t+1] != tup2[j+t+1])):
+			if cur_box==-1:
+				cur_box=j
+			else:
+				cur_box=j
+				swaps+=1		
+	manh_d=0
+	for j in range(num_b*2):
+		manh_d+= abs(tup1[j]-tup2[j])
+	score_gen = swaps*(manh_d)
+	return score_gen, cur_box
+
+#for depth first traversal of a tree
+def tree_dfs(conf_tree, max_score, swaps, cur_box, parent_d, num_b, max_config=(0,0,0,0)):
+	if parent_d==-1:
+		pass
+	else:
+		score_gen, cur_box = calc_score(root_data, conf_tree.data, swaps, cur_box, num_b)
+		if score_gen>max_score:
+			max_score=score_gen
+			max_config=conf_tree.data	
+	for i in range(len(conf_tree.child)):
+		parent_d=conf_tree.data
+		max_score, max_config = tree_dfs(conf_tree.child[i], max_score, swaps, cur_box, parent_d, num_b, max_config)
+	
+	return max_score, max_config		
+	
+#calculates score for one tree
+def score_controller(conf_tree):
+	if conf_tree.child==[]:
+		return 0, 0
+	global root_data
+	root_data=conf_tree.data
+	num_b=int((len(conf_tree.data)-2)/2)
+	score=0
+	max_config=()
+	score, max_config = tree_dfs(conf_tree, 0, 0, -1, -1, num_b)
+	return score, max_config
+
+def level_generator(width, height, num_box):
+	for i in range(10):
+		rm=Room(height, width, num_box)
+		rm.topology_gen(int(1.5*(height+width)))
+		rm.position_configuration()
+		tre=create_config_tree(rm)			
+		score, max_config = score_controller(tre)
+		if score>0:
+			rm.reset_position_configuration()
+			rm.set_position_configuration(max_config)
+			return rm.room
+		del rm
+		del tre
