@@ -3,6 +3,9 @@ import random
 import tkinter
 import copy
 import gym
+import os
+__path__=[os.path.dirname(os.path.abspath(__file__))]
+from . import level_generator
 from gym import error, spaces, utils
 
 class SokobanEnv(gym.Env):
@@ -24,9 +27,6 @@ class SokobanEnv(gym.Env):
         self.action_space = spaces.Discrete(len(self._action_set))
         self.observation_space = None
         
-        #rendering
-        self.root = tkinter.Tk()
-        
         
     def step(self, a):
         action = self._action_set[a]
@@ -42,34 +42,49 @@ class SokobanEnv(gym.Env):
         return observation, reward, self.is_finish, info
     
     def reset(self):
-        #.. TODO
-        self.world = generate_level(height=h, width=w, boxes=b)
-        self.root.destroy()
-        pass
+        #function to reset the environment to a new room configuration
+        self.world, self.player_pos = level_generator.level_generator(10,10,2)
+        print(self.world)
+        self.size = np.shape(self.world)
+        self.is_finish = False
+        self.curr_step = -1
+        self.observation_space = spaces.Box(np.full(self.size,-3), np.full(self.size,3))
+        
+        return self._get_state()
+        
     
     def render(self, mode='human', close=False):
         #function to visualise the problem
+        root = tkinter.Tk()
         CODE = {'W':'#808000',
        'E':'#FFFFFF',
        'T':'#008000',
        'B':'#00FFFF',
        'P':'#FFFF00',
-       'X':'#808000'}
+       'X':'#808000',
+       'C':'#00FF00'}
         r = lambda x: CODE[x]
         x, y = self.world.shape
-        [tkinter.Label(self.root, text=self.world[i,j], bg=r(self.world[i,j])).grid(row=i,column=j)\
+        [tkinter.Label(root, text=self.world[i,j], bg=r(self.world[i,j])).grid(row=i,column=j)\
          for i in range(0,x) for j in range(0,x)]
-        self.root.mainloop()
+#         root.mainloop()
+#         time.sleep(2) 
+#         root.quit()
     
     def _move_y(self, x, y, aux=None, option=1):
-        # move the player in upward/downward direction
+        # move the player in left/right direction
         if option == 2 and aux != None: #encountered a box
             op = self._get_opt(x,aux)
-            if op == 1 or op == 2: #encountered a box or a wall at auxilliary position
+            if op == 1 or op == 2 or op == 5: #encountered a box or a wall at auxilliary position
                 pass
-            elif op == 3 or op == 4: #encountered an empty tile or a target tile at auxilliary position
+            elif op == 3: #encountered an empty tile at auxilliary position
                 self._update_player()
                 self.world[aux,x] = 'B'
+                self.world[y,x] = 'P'
+                self.player_pos = (x,y)
+            elif op == 4: #encountered a target tile at auxilliary position
+                self._update_player()
+                self.world[aux,x] = 'C'
                 self.world[y,x] = 'P'
                 self.player_pos = (x,y)
         elif option == 3: #encountered an empty tile
@@ -80,16 +95,35 @@ class SokobanEnv(gym.Env):
             self._update_player()
             self.world[y,x] = 'X'
             self.player_pos = (x,y)
+        elif option == 5 and aux!=None: #encountered a box kept on a target tile
+            op = self._get_opt(x,aux)
+            if op == 1 or op == 2 or op == 5: #encountered a box or a wall at auxilliary position
+                pass
+            elif op == 3: #encountered an empty tile at auxilliary position
+                self._update_player()
+                self.world[aux,x] = 'B'
+                self.world[y,x] = 'X'
+                self.player_pos = (x,y)
+            elif op == 4: #encountered a target tile at auxilliary position
+                self._update_player()
+                self.world[aux,x] = 'C'
+                self.world[y,x] = 'X'
+                self.player_pos = (x,y)
     
     def _move_x(self, x, y, aux=None, option=1):
         # move the player in left/right direction
         if option == 2 and aux != None: #encountered a box
             op = self._get_opt(aux,y)
-            if op == 1 or op == 2: #encountered a box or a wall at auxilliary position
+            if op == 1 or op == 2 or op == 5: #encountered a box or a wall at auxilliary position
                 pass
-            elif op == 3 or op == 4: #encountered an empty tile or a target tile at auxilliary position
+            elif op == 3: #encountered an empty tile at auxilliary position
                 self._update_player()
                 self.world[y,aux] = 'B'
+                self.world[y,x] = 'P'
+                self.player_pos = (x,y)
+            elif op == 4: #encountered a target tile at auxilliary position
+                self._update_player()
+                self.world[y,aux] = 'C'
                 self.world[y,x] = 'P'
                 self.player_pos = (x,y)
         elif option == 3: #encountered an empty tile
@@ -100,6 +134,20 @@ class SokobanEnv(gym.Env):
             self._update_player()
             self.world[y,x] = 'X'
             self.player_pos = (x,y)
+        elif option == 5 and aux!=None: #encountered a box kept on a target tile
+            op = self._get_opt(aux,y)
+            if op == 1 or op == 2 or op == 5: #encountered a box or a wall at auxilliary position
+                pass
+            elif op == 3: #encountered an empty tile at auxilliary position
+                self._update_player()
+                self.world[y,aux] = 'B'
+                self.world[y,x] = 'X'
+                self.player_pos = (x,y)
+            elif op == 4: #encountered a target tile at auxilliary position
+                self._update_player()
+                self.world[y,aux] = 'C'
+                self.world[y,x] = 'X'
+                self.player_pos = (x,y)
     
     def _update_player(self):
         # update the player position
@@ -119,16 +167,18 @@ class SokobanEnv(gym.Env):
             return 3
         elif self.world[y,x] == 'T': #encounters a target tile at (x,y)
             return 4
+        elif self.world[y,x] == 'C': #encounters a box kept on a target tile at (x,y)
+            return 5
     
     def _take_action(self, action):
         # change the matrix representation according to the action specified
         self.past_world = copy.deepcopy(self.world)
         new_x, new_y = self.player_pos
         # MOVE LEFT
-        if action == 1: 
+        if action == 1:
             new_x = new_x-1
             opt = self._get_opt(new_x, new_y)
-            if opt == 2: #encountered a box, do a push-ahead mechanism
+            if opt == 2 or opt == 5: #encountered a box, do a push-ahead mechanism
                 x2 = new_x-1
                 self._move_x(new_x, new_y, aux=x2, option=opt)
             elif opt == 3 or opt == 4: #encountered an empty tile or a target tile
@@ -137,7 +187,7 @@ class SokobanEnv(gym.Env):
         elif action == 2:
             new_x = new_x+1
             opt = self._get_opt(new_x, new_y)
-            if opt == 2: #encountered a box, do a push-ahead mechanism
+            if opt == 2 or opt == 5: #encountered a box, do a push-ahead mechanism
                 x2 = new_x+1
                 self._move_x(new_x, new_y, aux=x2, option=opt)
             elif opt == 3 or opt == 4: #encountered an empty tile or a target tile
@@ -146,7 +196,7 @@ class SokobanEnv(gym.Env):
         elif action == 3:
             new_y = new_y-1
             opt = self._get_opt(new_x, new_y)
-            if opt == 2: #encountered a box, do a push-ahead mechanism
+            if opt == 2 or opt == 5: #encountered a box, do a push-ahead mechanism
                 y2 = new_y-1
                 self._move_y(new_x, new_y, aux=y2, option=opt)
             elif opt == 3 or opt == 4: #encountered an empty tile or a target tile
@@ -155,7 +205,7 @@ class SokobanEnv(gym.Env):
         else:
             new_y = new_y+1
             opt = self._get_opt(new_x, new_y)
-            if opt == 2: #encountered a box, do a push-ahead mechanism
+            if opt == 2 or opt == 5: #encountered a box, do a push-ahead mechanism
                 y2 = new_y+1
                 self._move_y(new_x, new_y, aux=y2, option=opt)
             elif opt == 3 or opt == 4: #encountered an empty tile or a target tile
@@ -204,7 +254,27 @@ class SokobanEnv(gym.Env):
     
     def _get_state(self):
         # return the current state observation
-        return self.world
+        s = self.size[0]
+        x = np.full((s,s,5), 0)
+        for i in range(0,s):
+            for j in range(0,s):
+                if self.world[i,j] == 'W':
+                    x[i,j,0] = 1
+                elif self.world[i,j] == 'E':
+                    x[i,j,1] = 1
+                elif self.world[i,j] == 'T':
+                    x[i,j,2] = 1
+                elif self.world[i,j] == 'B':
+                    x[i,j,3] = 1
+                elif self.world[i,j] == 'P':
+                    x[i,j,4] = 1
+                elif self.world[i,j] == 'X':
+                    x[i,j,2] = 1
+                    x[i,j,4] = 1
+                elif self.world[i,j] == 'C':
+                    x[i,j,2] = 1
+                    x[i,j,3] = 1
+        return x
     
     def _get_reward(self):
         state = self._check_state()
